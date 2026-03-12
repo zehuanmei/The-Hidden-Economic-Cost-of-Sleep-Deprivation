@@ -1,0 +1,253 @@
+---
+title: "The Hidden Economic Cost of Sleep Deprivation"
+author: "Hao Yang & Zehuan Mei"
+date: "2026-02-16"
+format: 
+  dashboard:
+    logo: "https://ischool.uw.edu/sites/default/files/inline-images/logo-black.jpg"
+    #theme: simplex
+    theme: flatly
+    orientation: columns
+embed-resources: true
+---
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+# Load necessary libraries for data processing and visualization
+library(readxl)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+library(plotly)
+```
+
+# Overview {orientation="columns"}
+
+## Col 1 
+
+### Intro
+
+::: {.card title="Intro: The Economics of Rest" width="20%"}
+The relationship between health and wealth is a cornerstone of modern socioeconomic study. While much attention is paid to diet and exercise, sleep is often the invisible metric of productivity. According to research by the [RAND Corporation](https://www.rand.org/pubs/research_reports/RR1791.html), sleep deprivation among the U.S. leads to a world's highest economic loss of up to $411 billion annually. This project examines whether this burden is shared equally or if "sleep debt" is a tax paid primarily by lower-income regions.
+
+Our investigation is driven by three primary inquiries:
+
+1. Is there a statistically significant correlation between a state’s median household income and its prevalence of short sleep duration?
+
+2. Which specific states act as outliers, maintaining high income despite high sleep debt, or vice-versa?
+
+3. Do states grouped by "high sleep debt" show a distinct, lower income distribution compared to "low sleep debt" states?
+
+Justifying this analysis is critical for public policy. If sleep deprivation is geographically and economically clustered, it suggests that exhaustion is not just a personal choice, but a systemic symptom of financial instability. By identifying these "Sleep Debt" zones, we can better understand how environmental stressors in lower-income states might be preventing economic mobility through chronic fatigue.
+:::
+
+## Col 2
+
+### Project Justification {height="30%"}
+::: {.card title="Project Justification" }
+Our analysis is important because it highlights geographical "sleep debt" zones. By identifying these areas, policymakers can better target health and economic interventions and see if there is a measurable "poverty trap" where economic status limits the physiological ability to recover.
+:::
+
+### Ethical Considerations & Bias
+::: {.card title="Ethical Considerations & Bias"}
+When handling public health and economic data, privacy is the paramount concern. Both the CDC and Census Bureau datasets are strictly aggregated at the county or state level, meaning no individual records are accessible, thus protecting participant anonymity. However, we must acknowledge coverage bias. The CDC PLACES model relies on telephone surveys (BRFSS), which may systematically underrepresent populations without stable housing or those who primarily use unlisted mobile numbers.
+
+Furthermore, we must consider the human value of this data. Using statistics to label certain regions as "unhealthy" can lead to stigmatization. Our goal is to use this data as a tool to highlight where resources are highly needed rather than to judge the lifestyle choices of residents in different economic tiers.
+:::
+
+
+# Data Context
+
+## Col 1
+
+### CDC PLACES Sleep Data {height="70%"}
+::: {.card title="CDC PLACES Sleep Data"}
+The first dataset comes from the CDC PLACES program, developed by the Centers for Disease Control and Prevention (CDC) to provide local-level estimates of health behaviors across the United States. It is derived from the Behavioral Risk Factor Surveillance System (BRFSS), the nation’s largest ongoing health survey, which conducts more than 400,000 annual telephone interviews with U.S. adults. The 2022 release uses model-based methods to estimate the percentage of adults in each county who sleep fewer than seven hours per night, reported as age-adjusted prevalence to allow fair comparisons across regions with different age distributions. This dataset is well suited for identifying broad geographic patterns—such as where sleep deprivation is concentrated—and comparing them with economic factors, though its model-based approach may smooth over hyper-local variation, particularly in sparsely populated rural counties.
+:::
+
+### Data Sources
+::: {.card title="Data Sources"}
+-   **Sleep Data:** [CDC PLACES (2022)](https://data.cdc.gov/500-Cities-Places/PLACES-Local-Data-for-Better-Health-Census-Tract-D/cwsq-ngmh/)
+:::
+
+
+## Col 2
+
+### U.S. Census Bureau Income Data {height="70%"}
+::: {.card title="U.S. Census Bureau Income Data"}
+The income data originates from Table H-8 of the Current Population Survey (CPS), a joint effort between the Bureau of Labor Statistics and the U.S. Census Bureau. The survey records data from a sample of approximately 100,000 addresses per year, using a rotating panel design to ensure a representative cross-section of the American population. Our analysis utilizes the 2022 "Current Dollar" estimates, which provide median household income figures for every state and the District of Columbia. While this is considered the gold standard for U.S. economic data, it relies on self-reported income, which can be subject to recall bias or underreporting of non-traditional income streams.
+:::
+
+### Data Sources
+::: {.card title="Data Sources"}
+-   **Income Data:** [U.S. Census Bureau Table H-8 (2022)](https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-income-households.html)
+:::
+
+# Data Analysis & Visualizations
+
+```{r}
+#| include: false
+
+# Loading and Cleaning Logic from previous deliverables
+sleep_raw <- read_excel("sleep_clean.xlsx")
+income_raw <- read_excel("income_clean.xlsx", col_names = FALSE)
+
+# Basic Tools: Filter and Summarize for CDC Data
+sleep_state <- sleep_raw %>%
+  filter(DataValueTypeID == "AgeAdjPrv", StateDesc != "United States", !is.na(Data_Value)) %>%
+  group_by(StateDesc) %>%
+  summarise(avg_sleep_deprivation = mean(Data_Value, na.rm = TRUE), .groups = "drop")
+
+# Reshaping Income Data
+current_idx <- which(income_raw[[1]] == "Current Dollars")
+states <- as.character(income_raw[[1]][(current_idx+3):60]) # Simplified for logic
+income_2022 <- data.frame(
+  state = states,
+  median_income = as.numeric(income_raw[[2]][(current_idx+3):60]),
+  year = 2022
+) %>% filter(state != "United States" & !is.na(median_income))
+
+# Join Data
+joined_clean <- left_join(sleep_state, income_2022, by = c("StateDesc" = "state")) %>%
+  mutate(income_thousands = median_income / 1000) # Basic Tool: Mutate
+```
+
+## Col 1
+
+### Question 1: Is there a measurable Correlation?
+```{r}
+#| title: "[Q1] The Income-Sleep Correlation"
+
+# Visualization 1: Scatter Plot 
+plot1 <- ggplot(joined_clean, aes(x = income_thousands, y = avg_sleep_deprivation)) +
+  geom_point(aes(text = paste0("State: ", StateDesc, 
+                               "<br>Median Income: $", round(income_thousands, 1), "k",
+                               "<br>Sleep Deprivation: ", round(avg_sleep_deprivation, 1), "%")),
+             color = "steelblue", size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "firebrick") +
+  labs(x = "Median Income ($1000s)", y = "Short Sleep Prevalence (%)") +
+  theme_minimal()
+
+# Interactivity
+ggplotly(plot1, tooltip = "text")
+```
+
+### Correlation Coefficient
+::: {.card title="[Q1] Intermediate Tool: Correlation Coefficient"}
+To provide a mathematical answer to our first big-picture question, we calculated the *Pearson Correlation Coefficient** ($r$).
+
+```{r}
+cor_val <- cor(joined_clean$median_income, joined_clean$avg_sleep_deprivation, use = "complete.obs")
+print(paste("Correlation Coefficient:", round(cor_val, 3)))
+```
+
+Standard visualization can be deceptive. By using `cor()`, an intermediate statistical tool, we gain a standardized score between -1 and 1. This value tells us not just that a relationship exists, but precisely how strong it is, allowing us to validate our claims with more than just a visual guess.
+:::
+
+## Col 2
+::: {.card title="[Q2] Top 10 States by Sleep Deprivation"}
+<!-- ### Question 2: Which states have the highest Sleep Debt? -->
+::: {layout="[[35, 65]]"}
+<div>
+By arranging the data and slicing the top 10 most sleep-deprived states, we can identify geographic clusters. This step is necessary to see if the "sleep debt" is a national issue or concentrated in specific regional economies.
+</div>
+```{r}
+#| label: q2-viz
+#| message: false
+#| warning: false
+#| 
+# Visualization 2: Bar Chart
+# Basic Tools: Arrange and Slice
+top_10_sleep <- joined_clean %>%
+  arrange(desc(avg_sleep_deprivation)) %>%
+  slice(1:10)
+
+plot2 <- ggplot(top_10_sleep, aes(x = reorder(StateDesc, avg_sleep_deprivation), y = avg_sleep_deprivation, fill = avg_sleep_deprivation)) +
+  geom_col(aes(text = paste0("State: ", StateDesc, 
+                             "<br>Short Sleep Prevalence: ", round(avg_sleep_deprivation, 2), "%"))) +
+  coord_flip() +
+  scale_fill_gradient(low = "orange", high = "red") +
+  labs(x = "State", y = "Avg. Short Sleep (%)", fill = "Sleep %") +
+  theme_minimal()
+ggplotly(plot2, tooltip = "text")
+```
+:::
+:::
+
+::: {.card title="[Q3] Income Distribution by Sleep Level"}
+<!-- ### Question 3: How do Income Distributions differ by Sleep Level? -->
+::: {layout="[[35, 65]]"}
+<div>
+We utilized `case_when()` to transform our continuous sleep data into categorical "levels." This allowed us to create a boxplot to compare the median and spread of income across different tiers of sleep health.
+</div>
+```{r}
+# #| title: "[Q3] Income Distribution by Sleep Level"
+
+# Visualization 3: Boxplot
+# Basic Tool: Mutate for Categorical Levels
+joined_clean <- joined_clean %>%
+  mutate(sleep_level = case_when(
+    avg_sleep_deprivation >= 38 ~ "High",
+    avg_sleep_deprivation >= 34 ~ "Medium",
+    TRUE ~ "Low"
+  ))
+
+plot3 <- ggplot(joined_clean, aes(x = sleep_level, y = income_thousands, fill = sleep_level)) +
+  geom_boxplot() +
+  labs(x = "Sleep Deprivation Level", y = "Median Income ($1000s)") +
+  theme_minimal()
+ggplotly(plot3)
+```
+:::
+:::
+
+# Conclusions & Team
+
+## Col 1
+
+### Summary {height="60%"}
+::: {.card title="Summary Takeaways"}
+1.  **Strong Negative Correlation:** Our analysis confirms a strong negative relationship between income and sleep deprivation. States with lower median incomes consistently report higher percentages of residents sleeping less than 7 hours.
+
+2.  **Geographic Disparities:** The "High Sleep Debt" states align with regions that historically face economic challenges, suggesting that sleep debt is a regional public health crisis linked to poverty.
+
+3.  **Income Stability:** Our categorical analysis suggests that while high-income states aren't immune to sleep issues, low-income states have a much higher "floor" for sleep deprivation, meaning it is more pervasive across their entire population.
+
+**Bias Assessment:** We believe our data might underestimate sleep debt in urban centers where "gig economy" workers may be less likely to respond to standard phone surveys.
+:::
+
+### Future Directions
+::: {.card title="Future Directions"}
+To better answer our questions, we would like to join this data with "Cost of Living" indices. It is possible that residents in high-income states like California or New York still suffer from high sleep debt because their higher nominal income is offset by extreme housing costs, forcing longer working hours. Incorporating "hours worked per week" would provide the final piece of the productivity puzzle.
+:::
+
+## Col 2
+
+### Coding Notes {height="60%"}
+::: {.card title="Coding Notes"}
+-   **Intermediate Tool - the Correlation Coefficient**: We used `cor()` to quantify the relationship between our two primary variables.
+
+-   **Standard Tools**: All data wrangling relied on `readxl`, `dplyr`, and `stringr` as covered in class.
+
+-   `stringr::str_extract()`: Used to pull 4-digit years from messy Excel headers. Standard tools like as.numeric failed here because the headers contained text like "2022 (Current)".
+
+-   **ggplot2 Customization**: Used `reorder()` to rank bars and human-readable labels for all axes and scales.
+
+-   **ggplotly**: Used `ggplotly()` to enhance user engagement and provide exact values without cluttering the visual field with text labels.
+
+-   **Quarto Dashboard Formatting**: We used `orientation: columns` and manual `{width=...}` tags to ensure the most important insights were prominent.
+:::
+
+### Group Info
+::: {.card title="Group Information"}
+-   **Hao Yang** (University of Washington; hyang643\@uw.edu): Interested in exploring how sleep deprivation patterns relate to economic outcomes across U.S. states.
+
+-   **Zehuan Mei** (University of Washington; zehuanm\@uw.edu): Interested in applied data science and communicating findings through clear visualizations.
+
+**Lab Section:** BC 7 \| **TA:** Alissa Lau
+:::
+
